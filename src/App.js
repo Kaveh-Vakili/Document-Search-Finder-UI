@@ -113,8 +113,8 @@ const App = () => {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="w-full max-w-2xl px-4">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-semibold text-gray-900 mb-2">Document Search</h1>
-          <p className="text-gray-600">Search and view documents from your database</p>
+          <h1 className="text-4xl font-semibold text-gray-900 mb-2">Welcome Babak!</h1>
+          <p className="text-gray-600">How can I help you today?</p>
         </div>
         
         <div ref={searchRef} className="relative">
