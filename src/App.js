@@ -40,7 +40,11 @@ const App = () => {
     setIsSearching(true);
     try {
       const response = await fetch(`http://localhost:8000/search?query=${encodeURIComponent(searchQuery)}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data = await response.json();
+      console.log('Search results:', data); // Debug log
       setSearchResults(data.results || []);
       setShowDropdown(true);
     } catch (error) {
@@ -58,11 +62,15 @@ const App = () => {
     
     try {
       const response = await fetch(`http://localhost:8000/document/${encodeURIComponent(document.id)}`);
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
       const data = await response.json();
+      console.log('Document content loaded:', data); // Debug log
       setDocumentContent(data.content || '');
     } catch (error) {
       console.error('Document fetch error:', error);
-      setDocumentContent('Error loading document content.');
+      setDocumentContent('Error loading document content. Please check if the backend is running and the document exists.');
     } finally {
       setIsLoading(false);
     }
@@ -98,8 +106,40 @@ const App = () => {
               </div>
             ) : (
               <div className="prose max-w-none">
-                <div className="whitespace-pre-wrap text-gray-700 leading-relaxed">
-                  {documentContent}
+                <div className="whitespace-pre-wrap text-gray-700 leading-relaxed font-sans">
+                  {documentContent.split('\n').map((paragraph, index) => {
+                    // Skip empty lines
+                    if (!paragraph.trim()) return null;
+                    
+                    // Check if it's a heading (all caps or ends with colon)
+                    const isHeading = paragraph === paragraph.toUpperCase() || paragraph.endsWith(':');
+                    
+                    if (isHeading) {
+                      return (
+                        <h3 key={index} className="text-lg font-bold text-gray-900 mt-6 mb-3">
+                          {paragraph}
+                        </h3>
+                      );
+                    }
+                    
+                    // Check if it's a list item
+                    const isList = paragraph.trim().startsWith('-') || paragraph.trim().startsWith('•');
+                    
+                    if (isList) {
+                      return (
+                        <li key={index} className="ml-6 mb-2 text-gray-700">
+                          {paragraph.replace(/^[-•]\s*/, '')}
+                        </li>
+                      );
+                    }
+                    
+                    // Regular paragraph
+                    return (
+                      <p key={index} className="mb-4 text-gray-700 leading-relaxed">
+                        {paragraph}
+                      </p>
+                    );
+                  }).filter(Boolean)}
                 </div>
               </div>
             )}
@@ -113,8 +153,8 @@ const App = () => {
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
       <div className="w-full max-w-2xl px-4">
         <div className="text-center mb-8">
-          <h1 className="text-4xl font-semibold text-gray-900 mb-2">Welcome Babak!</h1>
-          <p className="text-gray-600">How can I help you today?</p>
+          <h1 className="text-4xl font-semibold text-gray-900 mb-2">Document Search</h1>
+          <p className="text-gray-600">Search and view documents from your database</p>
         </div>
         
         <div ref={searchRef} className="relative">
