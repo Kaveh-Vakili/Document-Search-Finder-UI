@@ -1,149 +1,125 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Search, FileText, ChevronRight, X } from 'lucide-react';
+// App.js - With Sign Up
+import React, { useState, useEffect } from 'react';
+import DocumentSearch from './DocumentSearch';
+import { Amplify } from 'aws-amplify';
+import { Auth } from 'aws-amplify';
+import awsconfig from './aws-config';
 
-const App = () => {
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const [selectedDocument, setSelectedDocument] = useState(null);
-  const [documentContent, setDocumentContent] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const searchRef = useRef(null);
+Amplify.configure(awsconfig);
 
-  // Close dropdown when clicking outside
+function App() {
+  const [user, setUser] = useState(null);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [verificationCode, setVerificationCode] = useState('');
+  const [needsVerification, setNeedsVerification] = useState(false);
+
   useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (searchRef.current && !searchRef.current.contains(event.target)) {
-        setShowDropdown(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    checkUser();
   }, []);
 
-  // Debounced search
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (searchQuery.trim()) {
-        handleSearch();
+  const checkUser = async () => {
+    try {
+      const currentUser = await Auth.currentAuthenticatedUser();
+      setUser(currentUser);
+    } catch (error) {
+      setUser(null);
+    } finally {
+      setCheckingAuth(false);
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      if (needsVerification) {
+        await Auth.confirmSignUp(email, verificationCode);
+        alert('Email verified! Please sign in.');
+        setNeedsVerification(false);
+        setIsSignUp(false);
+      } else if (isSignUp) {
+        await Auth.signUp({
+          username: email,
+          password,
+          attributes: { email }
+        });
+        setNeedsVerification(true);
+        alert('Check your email for verification code!');
       } else {
-        setSearchResults([]);
-        setShowDropdown(false);
+        const cognitoUser = await Auth.signIn(email, password);
+        setUser(cognitoUser);
       }
-    }, 300);
-
-    return () => clearTimeout(timer);
-  }, [searchQuery]);
-
-  const handleSearch = async () => {
-    setIsSearching(true);
-    try {
-      const response = await fetch(`http://localhost:8000/search?query=${encodeURIComponent(searchQuery)}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      console.log('Search results:', data); // Debug log
-      setSearchResults(data.results || []);
-      setShowDropdown(true);
     } catch (error) {
-      console.error('Search error:', error);
-      setSearchResults([]);
+      setError(error.message);
     } finally {
-      setIsSearching(false);
+      setLoading(false);
     }
   };
 
-  const handleDocumentSelect = async (document) => {
-    setSelectedDocument(document);
-    setShowDropdown(false);
-    setIsLoading(true);
-    
+  const handleLogout = async () => {
     try {
-      const response = await fetch(`http://localhost:8000/document/${encodeURIComponent(document.id)}`);
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const data = await response.json();
-      console.log('Document content loaded:', data); // Debug log
-      setDocumentContent(data.content || '');
+      await Auth.signOut();
+      setUser(null);
     } catch (error) {
-      console.error('Document fetch error:', error);
-      setDocumentContent('Error loading document content. Please check if the backend is running and the document exists.');
-    } finally {
-      setIsLoading(false);
+      console.error('Error signing out:', error);
     }
   };
 
-  const handleBackToSearch = () => {
-    setSelectedDocument(null);
-    setDocumentContent('');
-    setSearchQuery('');
-  };
-
-  if (selectedDocument) {
+  if (checkingAuth) {
     return (
-      <div className="min-h-screen bg-gray-50">
-        <div className="max-w-4xl mx-auto px-4 py-8">
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-gray-900"></div>
+      </div>
+    );
+  }
+
+  if (user) {
+    return (
+      <>
+        <div className="absolute top-4 right-4 z-50">
           <button
-            onClick={handleBackToSearch}
-            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 mb-6 transition-colors"
+            onClick={handleLogout}
+            className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
           >
-            <ChevronRight className="w-4 h-4 rotate-180" />
-            Back to search
+            Sign Out ({user.attributes?.email || user.username})
           </button>
-          
-          <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-8">
-            <div className="flex items-center gap-3 mb-6">
-              <FileText className="w-6 h-6 text-gray-400" />
-              <h1 className="text-2xl font-semibold text-gray-900">{selectedDocument.name}</h1>
-            </div>
-            
-            {isLoading ? (
-              <div className="flex items-center justify-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900"></div>
-              </div>
-            ) : (
-              <div className="prose max-w-none">
-                <div className="whitespace-pre-wrap text-gray-700 leading-relaxed font-sans">
-                  {documentContent.split('\n').map((paragraph, index) => {
-                    // Skip empty lines
-                    if (!paragraph.trim()) return null;
-                    
-                    // Check if it's a heading (all caps or ends with colon)
-                    const isHeading = paragraph === paragraph.toUpperCase() || paragraph.endsWith(':');
-                    
-                    if (isHeading) {
-                      return (
-                        <h3 key={index} className="text-lg font-bold text-gray-900 mt-6 mb-3">
-                          {paragraph}
-                        </h3>
-                      );
-                    }
-                    
-                    // Check if it's a list item
-                    const isList = paragraph.trim().startsWith('-') || paragraph.trim().startsWith('•');
-                    
-                    if (isList) {
-                      return (
-                        <li key={index} className="ml-6 mb-2 text-gray-700">
-                          {paragraph.replace(/^[-•]\s*/, '')}
-                        </li>
-                      );
-                    }
-                    
-                    // Regular paragraph
-                    return (
-                      <p key={index} className="mb-4 text-gray-700 leading-relaxed">
-                        {paragraph}
-                      </p>
-                    );
-                  }).filter(Boolean)}
-                </div>
-              </div>
-            )}
-          </div>
+        </div>
+        <DocumentSearch />
+      </>
+    );
+  }
+
+  if (needsVerification) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="max-w-md w-full space-y-8">
+          <h2 className="text-center text-3xl font-extrabold text-gray-900">
+            Verify your email
+          </h2>
+          <form onSubmit={handleSubmit} className="mt-8 space-y-6">
+            <input
+              type="text"
+              required
+              value={verificationCode}
+              onChange={(e) => setVerificationCode(e.target.value)}
+              className="appearance-none relative block w-full px-3 py-2 border border-gray-300 rounded-md"
+              placeholder="Enter verification code"
+            />
+            <button
+              type="submit"
+              disabled={loading}
+              className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              Verify
+            </button>
+          </form>
         </div>
       </div>
     );
@@ -151,74 +127,58 @@ const App = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex items-center justify-center">
-      <div className="w-full max-w-2xl px-4">
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-semibold text-gray-900 mb-2">Welcome Babak!</h1>
-          <p className="text-gray-600">Search and view documents from your database</p>
-        </div>
+      <div className="max-w-md w-full space-y-8">
+        <h2 className="text-center text-3xl font-extrabold text-gray-900">
+          {isSignUp ? 'Create an account' : 'Sign in to Document Search'}
+        </h2>
         
-        <div ref={searchRef} className="relative">
-          <div className="relative">
+        <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+          {error && (
+            <div className="bg-red-50 text-red-800 p-3 rounded">
+              {error}
+            </div>
+          )}
+          
+          <div className="space-y-4">
             <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search for documents..."
-              className="w-full px-12 py-4 text-lg bg-white border border-gray-300 rounded-lg shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+              type="email"
+              required
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="appearance-none relative block w-full px-3 py-2 border border-gray-300 rounded-md"
+              placeholder="Email address"
             />
-            <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-            {searchQuery && (
-              <button
-                onClick={() => setSearchQuery('')}
-                className="absolute right-4 top-1/2 transform -translate-y-1/2 text-gray-400 hover:text-gray-600"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            )}
+            <input
+              type="password"
+              required
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="appearance-none relative block w-full px-3 py-2 border border-gray-300 rounded-md"
+              placeholder="Password (min 8 characters)"
+            />
           </div>
-          
-          {showDropdown && searchResults.length > 0 && (
-            <div className="absolute w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg overflow-hidden z-10">
-              {searchResults.map((doc, index) => (
-                <button
-                  key={doc.id || index}
-                  onClick={() => handleDocumentSelect(doc)}
-                  className="w-full px-4 py-3 text-left hover:bg-gray-50 transition-colors border-b border-gray-100 last:border-b-0"
-                >
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <FileText className="w-4 h-4 text-gray-400" />
-                      <div>
-                        <div className="font-medium text-gray-900">{doc.name}</div>
-                        {doc.preview && (
-                          <div className="text-sm text-gray-500 truncate">{doc.preview}</div>
-                        )}
-                      </div>
-                    </div>
-                    <ChevronRight className="w-4 h-4 text-gray-400" />
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
-          
-          {showDropdown && isSearching && (
-            <div className="absolute w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-10">
-              <div className="flex items-center justify-center">
-                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-gray-900"></div>
-              </div>
-            </div>
-          )}
-          
-          {showDropdown && !isSearching && searchResults.length === 0 && searchQuery && (
-            <div className="absolute w-full mt-2 bg-white border border-gray-200 rounded-lg shadow-lg p-4 z-10">
-              <p className="text-center text-gray-500">No documents found</p>
-            </div>
-          )}
-        </div>
+
+          <button
+            type="submit"
+            disabled={loading}
+            className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:opacity-50"
+          >
+            {loading ? 'Loading...' : (isSignUp ? 'Sign up' : 'Sign in')}
+          </button>
+        </form>
+        
+        <p className="text-center">
+          {isSignUp ? 'Already have an account? ' : "Don't have an account? "}
+          <button
+            onClick={() => setIsSignUp(!isSignUp)}
+            className="text-blue-600 hover:text-blue-500"
+          >
+            {isSignUp ? 'Sign in' : 'Sign up'}
+          </button>
+        </p>
       </div>
     </div>
   );
-};
+}
 
 export default App;
